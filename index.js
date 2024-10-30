@@ -112,7 +112,6 @@ app.get('/farmacias-de-turno', async (req, res) => {
           const nombre = $(element).find('.td').eq(0).text().trim().replace('Farmacia', '').trim();
           const mapaLink = $(element).find('a[href*="https://www.google.com/maps"]').attr('href');
 
-          // Extraer latitud y longitud del enlace de Google Maps
           const coords = mapaLink ? mapaLink.match(/destination=([-.\d]+),([-.\d]+)/) : null;
           const latitud = coords ? coords[1] : null;
           const longitud = coords ? coords[2] : null;
