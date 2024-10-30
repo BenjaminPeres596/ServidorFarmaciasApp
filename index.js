@@ -1,5 +1,7 @@
 const express = require('express');
 const axios = require('axios');
+const cheerio = require('cheerio');
+
 
 const app = express();
 const port = 3000;
@@ -97,5 +99,31 @@ app.get('/farmacias-cercanas', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).send('Error al obtener farmacias cercanas');
+  }
+});
+
+app.get('/farmacias-de-turno', async (req, res) => {
+  try {
+      const { data } = await axios.get('https://www.colfarmalp.org.ar/turnos-la-plata/');
+      const $ = cheerio.load(data);
+
+      const farmacias = [];
+      $('.turnos .tr').each((_, element) => {
+          const nombre = $(element).find('.td').eq(0).text().trim().replace('Farmacia', '').trim();
+          const mapaLink = $(element).find('a[href*="https://www.google.com/maps"]').attr('href');
+
+          // Extraer latitud y longitud del enlace de Google Maps
+          const coords = mapaLink ? mapaLink.match(/destination=([-.\d]+),([-.\d]+)/) : null;
+          const latitud = coords ? coords[1] : null;
+          const longitud = coords ? coords[2] : null;
+
+          if (nombre && latitud && longitud) {
+              farmacias.push({ nombre, latitud, longitud });
+          }
+      });
+
+      res.json(farmacias);
+  } catch (error) {
+      res.status(500).json({ error: 'Error al obtener datos' });
   }
 });
