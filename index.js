@@ -61,7 +61,7 @@ app.get('/farmacias-cercanas', async (req, res) => {
     let nextPageToken = null;
 
     do {
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=10000&type=pharmacy&key=${apiKey}` + (nextPageToken ? `&pagetoken=${nextPageToken}` : '');
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=-34.9181612,-57.9363597&radius=500&type=pharmacy&key=AIzaSyAhF_BSG-vy6lkSGWHKFxBPBQpol2SNlwA` + (nextPageToken ? `&pagetoken=${nextPageToken}` : '');
       console.log(`URL de solicitud: ${url}`);
       const response = await axios.get(url);
 
@@ -124,5 +124,72 @@ app.get('/farmacias-de-turno', async (req, res) => {
       res.json(farmacias);
   } catch (error) {
       res.status(500).json({ error: 'Error al obtener datos' });
+  }
+});
+
+app.get('/farmacias-cercanas/abiertas', async (req, res) => {
+  try {
+    const { lat, lon, cantidad } = req.query;
+    const apiKey = 'AIzaSyAhF_BSG-vy6lkSGWHKFxBPBQpol2SNlwA';
+
+    // Verificamos que lat y lon sean válidos
+    if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
+      return res.status(400).send('Coordenadas de latitud y longitud inválidas');
+    }
+
+    // Convertimos `cantidad` a número y verificamos que sea válido
+    let cantidadDeseada = null;
+    if (cantidad) {
+      cantidadDeseada = parseInt(cantidad, 10);
+      if (isNaN(cantidadDeseada) || cantidadDeseada <= 0) {
+        return res.status(400).send('Cantidad inválida');
+      }
+    }
+
+    const resultados = [];
+    let nextPageToken = null;
+
+    do {
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=10000&type=pharmacy&key=${apiKey}` + (nextPageToken ? `&pagetoken=${nextPageToken}` : '');
+      console.log(`URL de solicitud: ${url}`);
+      const response = await axios.get(url);
+      
+      // Filtrar farmacias que están abiertas
+      const farmacias = response.data.results
+        .filter((lugar) => lugar.opening_hours && lugar.opening_hours.open_now) // Filtrar solo las que están abiertas
+        .map((lugar) => ({
+          id: lugar.place_id,
+          name: lugar.name,
+          direccion: lugar.vicinity,
+          latitude: lugar.geometry.location.lat,
+          longitude: lugar.geometry.location.lng,
+        }));
+
+      resultados.push(...farmacias);
+
+      // Salir del bucle si ya hemos alcanzado la cantidad deseada
+      if (cantidadDeseada && resultados.length >= cantidadDeseada) break;
+
+      // Obtener el token de la siguiente página, si existe
+      nextPageToken = response.data.next_page_token;
+
+      // Espera antes de hacer la siguiente solicitud si hay un `next_page_token`
+      if (nextPageToken) {
+        console.log("Esperando para el siguiente `next_page_token`...");
+        await new Promise(resolve => setTimeout(resolve, 4000));
+      }
+
+    } while (nextPageToken);
+
+    // Si se proporcionó una cantidad, limitamos los resultados
+    if (cantidadDeseada) {
+      res.json(resultados.slice(0, cantidadDeseada));
+    } else {
+      // Devolver todos los resultados si no se especificó cantidad
+      res.json(resultados);
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Error al obtener farmacias cercanas');
   }
 });
