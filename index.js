@@ -43,12 +43,12 @@ app.get('/farmacias-cercanas', async (req, res) => {
     const { lat, lon, cantidad } = req.query;
     const apiKey = 'AIzaSyAhF_BSG-vy6lkSGWHKFxBPBQpol2SNlwA';
 
-    // Verificamos que lat y lon sean válidos
+    // Validar coordenadas lat y lon
     if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
       return res.status(400).send('Coordenadas de latitud y longitud inválidas');
     }
 
-    // Convertimos `cantidad` a número y verificamos que sea válido
+    // Validar cantidad
     let cantidadDeseada = null;
     if (cantidad) {
       cantidadDeseada = parseInt(cantidad, 10);
@@ -61,27 +61,27 @@ app.get('/farmacias-cercanas', async (req, res) => {
     let nextPageToken = null;
 
     do {
-      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=-34.9181612,-57.9363597&radius=500&type=pharmacy&key=AIzaSyAhF_BSG-vy6lkSGWHKFxBPBQpol2SNlwA` + (nextPageToken ? `&pagetoken=${nextPageToken}` : '');
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=10000&type=pharmacy&key=${apiKey}` + (nextPageToken ? `&pagetoken=${nextPageToken}` : '');
       console.log(`URL de solicitud: ${url}`);
       const response = await axios.get(url);
 
       const farmacias = response.data.results.map((lugar) => ({
         id: lugar.place_id,
-        nombre: lugar.name,
+        name: lugar.name,
         direccion: lugar.vicinity,
         latitude: lugar.geometry.location.lat,
         longitude: lugar.geometry.location.lng,
+        distance: Math.sqrt(
+          Math.pow(lugar.geometry.location.lat - lat, 2) + Math.pow(lugar.geometry.location.lng - lon, 2)
+        )
       }));
 
       resultados.push(...farmacias);
 
-      // Salir del bucle si ya hemos alcanzado la cantidad deseada
-      if (cantidadDeseada && resultados.length >= cantidadDeseada) break;
-
       // Obtener el token de la siguiente página, si existe
       nextPageToken = response.data.next_page_token;
 
-      // Espera antes de hacer la siguiente solicitud si hay un `next_page_token`
+      // Esperar antes de hacer la siguiente solicitud si hay un `next_page_token`
       if (nextPageToken) {
         console.log("Esperando para el siguiente `next_page_token`...");
         await new Promise(resolve => setTimeout(resolve, 4000));
@@ -89,13 +89,13 @@ app.get('/farmacias-cercanas', async (req, res) => {
 
     } while (nextPageToken);
 
-    // Si se proporcionó una cantidad, limitamos los resultados
-    if (cantidadDeseada) {
-      res.json(resultados.slice(0, cantidadDeseada));
-    } else {
-      // Devolver todos los resultados si no se especificó cantidad
-      res.json(resultados);
-    }
+    // Ordenar por distancia y limitar a la cantidad deseada
+    const farmaciasCercanas = resultados
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, cantidadDeseada || resultados.length);
+
+    res.json(farmaciasCercanas);
+
   } catch (error) {
     console.error(error);
     res.status(500).send('Error al obtener farmacias cercanas');
