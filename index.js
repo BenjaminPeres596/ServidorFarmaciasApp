@@ -270,8 +270,7 @@ app.get('/farmacias-abiertas-o-de-turno', async (req, res) => {
 
       if (nombre && latitud && longitud) {
         // Llamada a Google Places para obtener el place_id
-        const placeSearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitud},${longitud}&radius=50&keyword=${encodeURIComponent(nombre)}&key=${apiKey}`;
-        
+        const placeSearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitud},${longitud}&radius=50&keyword=${encodeURIComponent('FARMACIA '+ nombre)}&key=${apiKey}`;
         const placeResponse = await axios.get(placeSearchUrl);
         const placeData = placeResponse.data.results[0]; // Tomar el primer resultado, que debería coincidir
 
@@ -282,21 +281,28 @@ app.get('/farmacias-abiertas-o-de-turno', async (req, res) => {
             name: nombre,
             latitude: latitud,
             longitude: longitud,
+            direccion: placeData.vicinity || 'No disponible',
             distancia: calcularDistancia(lat, lon, latitud, longitud)
           });
         }
       }
     }
 
-    // Consolidar ambas listas y ordenar por distancia
-    const farmaciasConsolidadas = [...farmaciasAbiertas, ...farmaciasTurno]
-      .sort((a, b) => a.distancia - b.distancia)
-      .slice(0, cantidadDeseada || farmaciasAbiertas.length + farmaciasTurno.length);
+    // Consolidar ambas listas sin duplicados
+    const farmaciasConsolidadas = [...farmaciasAbiertas];
+    farmaciasTurno.forEach((farmaciaTurno) => {
+      if (!farmaciasConsolidadas.some((f) => f.id === farmaciaTurno.id)) {
+        farmaciasConsolidadas.push(farmaciaTurno);
+      }
+    });
 
+    // Limitar la cantidad de resultados si se especificó
+    farmaciasConsolidadas.sort((a, b) => a.distancia - b.distancia)
+    .slice(0, cantidadDeseada || farmaciasAbiertas.length + farmaciasTurno.length);
     res.json(farmaciasConsolidadas);
 
   } catch (error) {
     console.error(error);
-    res.status(500).send('Error al obtener farmacias abiertas o de turno');
+    res.status(500).send('Error al obtener farmacias');
   }
 });
