@@ -3,6 +3,7 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs");
+const path = require("path");
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radio de la Tierra en km
@@ -21,6 +22,7 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
 const generarCsvFarmaciasDeTurno = async (req, res) => {
   try {
     const farmaciasTurno = [];
+    const apiKey = "AIzaSyAhF_BSG-vy6lkSGWHKFxBPBQpol2SNlwA";
 
     // Obtener datos de farmacias de turno
     const { data } = await axios.get(
@@ -47,30 +49,57 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
       const longitud = coords ? parseFloat(coords[2]) : null;
 
       if (nombre && latitud && longitud) {
-        farmaciasTurno.push({ nombre, latitud, longitud });
+        // Buscar el place_id mediante la API de Google Places
+        const placeSearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitud},${longitud}&radius=50&keyword=${encodeURIComponent(
+          "FARMACIA " + nombre
+        )}&key=${apiKey}`;
+
+        try {
+          const placeResponse = await axios.get(placeSearchUrl);
+          const placeData = placeResponse.data.results[0]; // Tomar el primer resultado, que debería coincidir
+
+          // Solo agregar si se encontró el place_id
+          if (placeData) {
+            const placeId = placeData.place_id;
+            farmaciasTurno.push({
+              nombre,
+              latitud,
+              longitud,
+              placeId,
+            });
+          }
+        } catch (error) {
+          console.error(`Error al obtener place_id para ${nombre}:`, error);
+        }
       }
     }
 
-    // Crear o sobrescribir el archivo CSV
+    // Crear o sobrescribir el archivo CSV con el place_id
     const csvData =
-      "nombre,latitud,longitud\n" +
+      "nombre,latitud,longitud,placeId\n" +
       farmaciasTurno
         .map(
           (farmacia) =>
-            `${farmacia.nombre},${farmacia.latitud},${farmacia.longitud}`
+            `${farmacia.nombre},${farmacia.latitud},${farmacia.longitud},${farmacia.placeId}`
         )
         .join("\n");
 
-    fs.writeFileSync("files/farmacias_de_turno.csv", csvData, "utf8");
+    const filePath = path.join(__dirname, "../files/farmaciasDeTurno.csv");
+    fs.writeFileSync(filePath, csvData, "utf8");
 
     res
       .status(200)
-      .send("Archivo CSV de farmacias de turno creado correctamente.");
+      .send("Archivo CSV de farmacias de turno creado correctamente con place_id.");
   } catch (error) {
     console.error(error);
     res.status(500).send("Error al obtener farmacias de turno");
   }
 };
+
+module.exports = {
+  generarCsvFarmaciasDeTurno,
+};
+
 
 const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
   try {
