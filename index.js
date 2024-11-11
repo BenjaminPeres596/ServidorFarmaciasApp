@@ -1,6 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
+const fs = require("fs");
 
 const app = express();
 const port = 3000;
@@ -181,5 +182,50 @@ app.post("/get-directions", async (req, res) => {
   } catch (error) {
     console.error("Error fetching directions:", error);
     res.status(500).json({ error: "Error fetching directions" });
+  }
+});
+
+app.get("/farmacias-de-turno", async (req, res) => {
+  try {
+    const farmaciasTurno = [];
+
+    // Obtener datos de farmacias de turno
+    const { data } = await axios.get("https://www.colfarmalp.org.ar/turnos-la-plata/");
+    const $ = cheerio.load(data);
+
+    // Extraer información de cada farmacia de turno
+    for (const element of $(".turnos .tr")) {
+      const nombre = $(element)
+        .find(".td")
+        .eq(0)
+        .text()
+        .trim()
+        .replace("Farmacia", "")
+        .trim();
+      const mapaLink = $(element)
+        .find('a[href*="https://www.google.com/maps"]')
+        .attr("href");
+      const coords = mapaLink
+        ? mapaLink.match(/destination=([-.\d]+),([-.\d]+)/)
+        : null;
+      const latitud = coords ? parseFloat(coords[1]) : null;
+      const longitud = coords ? parseFloat(coords[2]) : null;
+
+      if (nombre && latitud && longitud) {
+        farmaciasTurno.push({ nombre, latitud, longitud });
+      }
+    }
+
+    // Crear o sobrescribir el archivo CSV
+    const csvData = "nombre,latitud,longitud\n" + farmaciasTurno
+      .map((farmacia) => `${farmacia.nombre},${farmacia.latitud},${farmacia.longitud}`)
+      .join("\n");
+
+    fs.writeFileSync("farmacias_de_turno.csv", csvData, "utf8");
+
+    res.status(200).send("Archivo CSV de farmacias de turno creado correctamente.");
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al obtener farmacias de turno");
   }
 });
