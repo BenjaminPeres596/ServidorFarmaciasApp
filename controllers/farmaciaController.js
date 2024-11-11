@@ -4,6 +4,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs");
 const path = require("path");
+const csvParser = require("csv-parser");
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
   const R = 6371; // Radio de la Tierra en km
@@ -89,17 +90,12 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
 
     res
       .status(200)
-      .send("Archivo CSV de farmacias de turno creado correctamente con place_id.");
+      .send("Archivo CSV de farmacias de turno creado correctamente.");
   } catch (error) {
     console.error(error);
     res.status(500).send("Error al obtener farmacias de turno");
   }
 };
-
-module.exports = {
-  generarCsvFarmaciasDeTurno,
-};
-
 
 const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
   try {
@@ -108,9 +104,7 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
 
     // Validar las coordenadas lat y lon
     if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
-      return res
-        .status(400)
-        .send("Coordenadas de latitud y longitud inválidas");
+      return res.status(400).send("Coordenadas de latitud y longitud inválidas");
     }
 
     // Convertir `cantidad` a número y validar
@@ -123,15 +117,13 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
     }
 
     const farmaciasAbiertas = [];
-    const farmaciasTurno = [];
 
-    // Obtener farmacias abiertas cercanas
+    // Obtener farmacias abiertas cercanas desde la API de Google Places
     let nextPageToken = null;
     do {
       const url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=10000&type=pharmacy&key=${apiKey}` +
         (nextPageToken ? `&pagetoken=${nextPageToken}` : "");
-      console.log(`URL de solicitud: ${url}`);
       const response = await axios.get(url);
 
       // Filtrar solo farmacias abiertas
@@ -162,49 +154,35 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
       (!cantidadDeseada || farmaciasAbiertas.length < cantidadDeseada)
     );
 
-    // Obtener farmacias de turno
-    const { data } = await axios.get(
-      "https://www.colfarmalp.org.ar/turnos-la-plata/"
-    );
-    const $ = cheerio.load(data);
+    // Leer farmacias de turno desde el archivo CSV
+    const farmaciasTurno = [];
+    const csvFilePath = path.join(__dirname, "../files/farmaciasDeTurno.csv");
 
-    for (const element of $(".turnos .tr")) {
-      const nombre = $(element)
-        .find(".td")
-        .eq(0)
-        .text()
-        .trim()
-        .replace("Farmacia", "")
-        .trim();
-      const mapaLink = $(element)
-        .find('a[href*="https://www.google.com/maps"]')
-        .attr("href");
-      const coords = mapaLink
-        ? mapaLink.match(/destination=([-.\d]+),([-.\d]+)/)
-        : null;
-      const latitud = coords ? parseFloat(coords[1]) : null;
-      const longitud = coords ? parseFloat(coords[2]) : null;
+    if (fs.existsSync(csvFilePath)) {
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(csvFilePath)
+          .pipe(csvParser())
+          .on("data", (row) => {
+            const { nombre, latitud, longitud, placeId } = row;
+            const distancia = calcularDistancia(
+              lat,
+              lon,
+              parseFloat(latitud),
+              parseFloat(longitud)
+            );
 
-      if (nombre && latitud && longitud) {
-        // Llamada a Google Places para obtener el place_id
-        const placeSearchUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${latitud},${longitud}&radius=50&keyword=${encodeURIComponent(
-          "FARMACIA " + nombre
-        )}&key=${apiKey}`;
-        const placeResponse = await axios.get(placeSearchUrl);
-        const placeData = placeResponse.data.results[0]; // Tomar el primer resultado, que debería coincidir
-
-        // Solo agregar si se encontró el place_id
-        if (placeData) {
-          farmaciasTurno.push({
-            id: placeData.place_id,
-            name: nombre,
-            latitude: latitud,
-            longitude: longitud,
-            direccion: placeData.vicinity || "No disponible",
-            distancia: calcularDistancia(lat, lon, latitud, longitud),
-          });
-        }
-      }
+            farmaciasTurno.push({
+              id: placeId,
+              name: nombre,
+              latitude: parseFloat(latitud),
+              longitude: parseFloat(longitud),
+              direccion: "No disponible",
+              distancia,
+            });
+          })
+          .on("end", resolve)
+          .on("error", reject);
+      });
     }
 
     // Consolidar ambas listas sin duplicados
@@ -216,13 +194,11 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
     });
 
     // Limitar la cantidad de resultados si se especificó
-    farmaciasConsolidadas
+    const resultado = farmaciasConsolidadas
       .sort((a, b) => a.distancia - b.distancia)
-      .slice(
-        0,
-        cantidadDeseada || farmaciasAbiertas.length + farmaciasTurno.length
-      );
-    res.json(farmaciasConsolidadas);
+      .slice(0, cantidadDeseada || farmaciasConsolidadas.length);
+
+    res.json(resultado);
   } catch (error) {
     console.error(error);
     res.status(500).send("Error al obtener farmacias");
