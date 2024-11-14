@@ -75,6 +75,12 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
       }
     }
 
+    // Crear el directorio 'files' si no existe (con opción 'recursive: true')
+    const dirPath = path.join(__dirname, "../files");
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true }); // Asegura que todo el directorio se cree
+    }
+
     // Crear o sobrescribir el archivo CSV con el place_id
     const csvData =
       "nombre,latitud,longitud,placeId\n" +
@@ -85,7 +91,7 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
         )
         .join("\n");
 
-    const filePath = path.join(__dirname, "../files/farmaciasDeTurno.csv");
+    const filePath = path.join(dirPath, "farmaciasDeTurno.csv");
     fs.writeFileSync(filePath, csvData, "utf8");
 
     res
@@ -104,7 +110,9 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
 
     // Validar las coordenadas lat y lon
     if (!lat || !lon || isNaN(parseFloat(lat)) || isNaN(parseFloat(lon))) {
-      return res.status(400).send("Coordenadas de latitud y longitud inválidas");
+      return res
+        .status(400)
+        .send("Coordenadas de latitud y longitud inválidas");
     }
 
     // Convertir `cantidad` a número y validar
