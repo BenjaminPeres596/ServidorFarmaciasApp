@@ -7,7 +7,11 @@ const path = require("path");
 const csvParser = require("csv-parser");
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Radio de la Tierra en km
+  lat1 = parseFloat(lat1);
+  lon1 = parseFloat(lon1);
+  lat2 = parseFloat(lat2);
+  lon2 = parseFloat(lon2);
+  const R = 6371e3; // Radio de la Tierra en km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
   const a =
@@ -176,8 +180,7 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
               name: nombre,
               latitude: parseFloat(latitud),
               longitude: parseFloat(longitud),
-              direccion: "No disponible",
-              distancia,
+              distancia: parseInt(distancia),
             });
           })
           .on("end", resolve)
