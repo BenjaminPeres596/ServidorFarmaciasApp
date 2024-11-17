@@ -44,6 +44,19 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
         .trim()
         .replace("Farmacia", "")
         .trim();
+      const direccion = $(element)
+        .find(".td")
+        .eq(1)
+        .text()
+        .trim()
+        .replace("Dirección", "")
+        .trim();
+      const telefono = $(element)
+        .find(".td")
+        .eq(3)
+        .text()
+        .replace("Teléfono", "")
+        .trim();
       const mapaLink = $(element)
         .find('a[href*="https://www.google.com/maps"]')
         .attr("href");
@@ -70,6 +83,8 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
               nombre,
               latitud,
               longitud,
+              direccion,
+              telefono,
               placeId,
             });
           }
@@ -87,11 +102,11 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
 
     // Crear o sobrescribir el archivo CSV con el place_id
     const csvData =
-      "nombre,latitud,longitud,placeId\n" +
+      "nombre,latitud,longitud,direccion,telefono,placeId\n" +
       farmaciasTurno
         .map(
           (farmacia) =>
-            `${farmacia.nombre},${farmacia.latitud},${farmacia.longitud},${farmacia.placeId}`
+            `${farmacia.nombre},${farmacia.latitud},${farmacia.longitud},${farmacia.direccion},${farmacia.telefono},${farmacia.placeId}`
         )
         .join("\n");
 
@@ -144,7 +159,6 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
         .map((lugar) => ({
           id: lugar.place_id,
           name: lugar.name,
-          direccion: lugar.vicinity,
           latitude: parseFloat(lugar.geometry.location.lat),
           longitude: parseFloat(lugar.geometry.location.lng),
           distancia: calcularDistancia(
@@ -154,6 +168,14 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
             lugar.geometry.location.lng
           ),
         }));
+
+      for (const lugar of abiertas) {
+        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${lugar.id}&fields=formatted_address,formatted_phone_number&key=${apiKey}`;
+        const detailsResponse = await axios.get(detailsUrl);
+        const details = detailsResponse.data.result;
+        lugar.direccion = details.formatted_address.split(',')[0].trim() || "No disponible";
+        lugar.telefono = details.formatted_phone_number || "No disponible";
+      }
 
       farmaciasAbiertas.push(...abiertas);
 
@@ -175,7 +197,7 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
         fs.createReadStream(csvFilePath)
           .pipe(csvParser())
           .on("data", (row) => {
-            const { nombre, latitud, longitud, placeId } = row;
+            const { nombre, latitud, longitud, direccion, telefono, placeId } = row;
             const distancia = calcularDistancia(
               lat,
               lon,
@@ -189,6 +211,8 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
               latitude: parseFloat(latitud),
               longitude: parseFloat(longitud),
               distancia: parseInt(distancia),
+              direccion: direccion,
+              telefono: telefono,
             });
           })
           .on("end", resolve)
