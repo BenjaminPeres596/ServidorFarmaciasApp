@@ -134,7 +134,6 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
         .send("Coordenadas de latitud y longitud inválidas");
     }
 
-    // Convertir `cantidad` a número y validar
     let cantidadDeseada = null;
     if (cantidad) {
       cantidadDeseada = parseInt(cantidad, 10);
@@ -144,16 +143,14 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
     }
 
     const farmaciasAbiertas = [];
-
-    // Obtener farmacias abiertas cercanas desde la API de Google Places
     let nextPageToken = null;
+
     do {
       const url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=10000&type=pharmacy&key=${apiKey}` +
         (nextPageToken ? `&pagetoken=${nextPageToken}` : "");
       const response = await axios.get(url);
 
-      // Filtrar solo farmacias abiertas
       const abiertas = response.data.results
         .filter((lugar) => lugar.opening_hours && lugar.opening_hours.open_now)
         .map((lugar) => ({
@@ -169,23 +166,34 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
           ),
         }));
 
-      for (const lugar of abiertas) {
-        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${lugar.id}&fields=formatted_address,formatted_phone_number&key=${apiKey}`;
-        const detailsResponse = await axios.get(detailsUrl);
-        const details = detailsResponse.data.result;
-        lugar.direccion = details.formatted_address.split(',')[0].trim() || "No disponible";
-        lugar.telefono = details.formatted_phone_number || "No disponible";
-      }
-
       farmaciasAbiertas.push(...abiertas);
 
       nextPageToken = response.data.next_page_token;
       if (nextPageToken) {
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } while (
       nextPageToken &&
       (!cantidadDeseada || farmaciasAbiertas.length < cantidadDeseada)
+    );
+
+    // Procesar los detalles en paralelo
+    await Promise.all(
+      farmaciasAbiertas.map(async (lugar) => {
+        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${lugar.id}&fields=formatted_address,formatted_phone_number&key=${apiKey}`;
+        try {
+          const detailsResponse = await axios.get(detailsUrl);
+          const details = detailsResponse.data.result;
+          lugar.direccion =
+            details.formatted_address?.split(",")[0].trim() || "No disponible";
+          lugar.telefono =
+            details.formatted_phone_number || "No disponible";
+        } catch (error) {
+          console.error(`Error al obtener detalles para ${lugar.id}:`, error);
+          lugar.direccion = "No disponible";
+          lugar.telefono = "No disponible";
+        }
+      })
     );
 
     // Leer farmacias de turno desde el archivo CSV
@@ -228,7 +236,7 @@ const obtenerFarmaciasAbiertasOTurno = async (req, res) => {
       }
     });
 
-    // Limitar la cantidad de resultados si se especificó
+    // Limitar la cantidad de resultados si se especifico
     const resultado = farmaciasConsolidadas
       .sort((a, b) => a.distancia - b.distancia)
       .slice(0, cantidadDeseada || farmaciasConsolidadas.length);
