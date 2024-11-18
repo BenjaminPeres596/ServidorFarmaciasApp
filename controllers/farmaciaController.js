@@ -113,12 +113,10 @@ const generarCsvFarmaciasDeTurno = async (req, res) => {
     const filePath = path.join(dirPath, "farmaciasDeTurno.csv");
     fs.writeFileSync(filePath, csvData, "utf8");
 
-    res
-      .status(200)
-      .send("Archivo CSV de farmacias de turno creado correctamente.");
+    console.log("Archivo CSV generado exitosamente.")
   } catch (error) {
-    console.error(error);
-    res.status(500).send("Error al obtener farmacias de turno");
+    console.error("Error al generar el CSV:", error);
+    throw error;
   }
 };
 
